@@ -39,30 +39,20 @@ pub struct Stack<T> {
 }
 
 impl<T> Stack<T> {
-    pub fn new(capacity: usize) -> Result<Self, StackError> {
-        if capacity == 0 {
-            Err(StackError::InvalidCapacity)
-        } else {
-            let layout = Layout::array::<T>(capacity)?;
-
-            let ptr = unsafe {
-                alloc(layout) as *mut T
-            };
-
-            if ptr.is_null() {
-                std::alloc::handle_alloc_error(layout);
-            }
-
-            Ok(Self {
-                ptr,
-                top: 0,
-                capacity,
-            })
+    pub fn new() -> Self {
+        Self {
+            ptr: ptr::null_mut(),
+            top: 0,
+            capacity: 0,
         }
     }
 
     fn grow(&mut self) -> Result<(), StackError> {
-        let new_capacity = self.capacity.checked_mul(2).ok_or(StackError::CapacityOverflow)?;
+        let new_capacity = if self.capacity == 0 {
+            4
+        } else {
+            self.capacity.checked_mul(2).ok_or(StackError::CapacityOverflow)?
+        };
         let old = Layout::array::<T>(self.capacity)?;
         let new = Layout::array::<T>(new_capacity)?;
 
@@ -80,10 +70,12 @@ impl<T> Stack<T> {
                 new_ptr.add(i).write(value);
             }
 
-            dealloc(
-                self.ptr as *mut u8,
-                old,
-            );
+            if !self.ptr.is_null() {
+                dealloc(
+                    self.ptr as *mut u8,
+                    old,
+                );
+            }
         }
 
         self.ptr = new_ptr;
@@ -140,11 +132,13 @@ impl<T> Drop for Stack<T> {
             for i in 0..self.top {
                 ptr::drop_in_place(self.ptr.add(i));
             }
-            let layout = Layout::array::<T>(self.capacity).unwrap();
-            dealloc(
-                self.ptr as *mut u8,
-                layout,
-            )
+            if !self.ptr.is_null() {
+                let layout = Layout::array::<T>(self.capacity).unwrap();
+                dealloc(
+                    self.ptr as *mut u8,
+                    layout,
+                )
+            }
         };
     }
 }
