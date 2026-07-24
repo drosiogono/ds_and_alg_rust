@@ -1,9 +1,10 @@
 use std::alloc::{alloc, dealloc, Layout};
-// use std::ptr;
+use std::ptr;
 
 #[derive(Debug)]
 pub enum StackError {
     CapacityOverflow,
+    InvalidCapacity,
     Underflow,
     LayoutError(std::alloc::LayoutError),
 }
@@ -15,6 +16,7 @@ impl std::fmt::Display for StackError {
     ) -> std::fmt::Result {
         match self {
             Self::CapacityOverflow => write!(f, "capacity overflow"),
+            Self::InvalidCapacity => write!(f, "invalid capacity"),
             Self::Underflow => write!(f, "stack underflow"),
             Self::LayoutError(layout_error) => write!(f, "LayoutError: {layout_error}"),
         }
@@ -30,38 +32,42 @@ impl From<std::alloc::LayoutError> for StackError {
 }
 
 #[derive(Debug)]
-pub struct IntStack<const N: usize> {
-    ptr: *mut i32,
+pub struct Stack<T> {
+    ptr: *mut T,
     top: usize,
     capacity: usize,
 }
 
-impl<const N: usize> IntStack<N> {
-    pub fn new() -> Result<Self, StackError> {
-        let layout = Layout::array::<i32>(N)?;
+impl<T> Stack<T> {
+    pub fn new(capacity: usize) -> Result<Self, StackError> {
+        if capacity == 0 {
+            Err(StackError::InvalidCapacity)
+        } else {
+            let layout = Layout::array::<T>(capacity)?;
 
-        let ptr = unsafe {
-            alloc(layout) as *mut i32
-        };
+            let ptr = unsafe {
+                alloc(layout) as *mut T
+            };
 
-        if ptr.is_null() {
-            std::alloc::handle_alloc_error(layout);
+            if ptr.is_null() {
+                std::alloc::handle_alloc_error(layout);
+            }
+
+            Ok(Self {
+                ptr,
+                top: 0,
+                capacity,
+            })
         }
-
-        Ok(Self {
-            ptr,
-            top: 0,
-            capacity: N,
-        })
     }
 
     fn grow(&mut self) -> Result<(), StackError> {
-        let new_capacity = self.capacity.checked_add(N).ok_or(StackError::CapacityOverflow)?;
-        let old = Layout::array::<i32>(self.capacity)?;
-        let new = Layout::array::<i32>(new_capacity)?;
+        let new_capacity = self.capacity.checked_mul(2).ok_or(StackError::CapacityOverflow)?;
+        let old = Layout::array::<T>(self.capacity)?;
+        let new = Layout::array::<T>(new_capacity)?;
 
         let new_ptr = unsafe {
-            alloc(new) as *mut i32
+            alloc(new) as *mut T
         };
 
         if new_ptr.is_null() {
@@ -85,7 +91,7 @@ impl<const N: usize> IntStack<N> {
         Ok(())
     }
 
-    pub fn push(&mut self, value: i32) -> Result<(), StackError>{
+    pub fn push(&mut self, value: T) -> Result<(), StackError>{
         if self.top == self.capacity {
             self.grow()?;
         }
@@ -96,7 +102,7 @@ impl<const N: usize> IntStack<N> {
         Ok(())
     }
 
-    pub fn pop(&mut self) -> Result<i32, StackError>{
+    pub fn pop(&mut self) -> Result<T, StackError>{
         if self.top == 0 {
             Err(StackError::Underflow)
         } else {
@@ -108,12 +114,12 @@ impl<const N: usize> IntStack<N> {
         }
     }
 
-    pub fn peek(&self) -> Result<i32, StackError> {
+    pub fn peek(&self) -> Result<&T, StackError> {
         if self.top == 0 {
             Err(StackError::Underflow)
         } else {
             let value = unsafe {
-                self.ptr.add(self.top - 1).read()
+                &*self.ptr.add(self.top - 1)
             };
             Ok(value)
         }
@@ -125,5 +131,20 @@ impl<const N: usize> IntStack<N> {
 
     pub fn size(&self) -> usize {
         self.top
+    }
+}
+
+impl<T> Drop for Stack<T> {
+    fn drop(&mut self) {
+        unsafe {
+            for i in 0..self.top {
+                ptr::drop_in_place(self.ptr.add(i));
+            }
+            let layout = Layout::array::<T>(self.capacity).unwrap();
+            dealloc(
+                self.ptr as *mut u8,
+                layout,
+            )
+        };
     }
 }
