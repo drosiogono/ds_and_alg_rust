@@ -1,10 +1,11 @@
 mod stack;
 mod queue;
-// mod array;
+mod array;
 
 use std::alloc::{alloc, dealloc, Layout};
 use stack::Stack;
 use queue::Queue;
+use array::Array;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Trying Queue..");
@@ -22,8 +23,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("size: {}", queue.size());
     println!("{}", queue.is_empty());
     println!("{:?}", queue);
-    println!("Provoking an error..");
-    queue.dequeue()?;
+    // println!("Provoking an error..");
+    // queue.dequeue()?;
 
     println!("\nTrying Stack..");
     let mut stack = Stack::new();
@@ -40,6 +41,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("size: {}", stack.size());
     println!("{}", stack.is_empty());
     println!("{:?}", stack);
+
+    println!("\nTrying Array..");
+    let mut array = Array::new();
+    array.push(String::from("hi"))?;
+    array.push(String::from("hello"))?;
+    array.push(String::from("hola"))?;
+    array.insert(0, String::from("ciao"))?;
+    println!("size: {}", array.size());
+    for i in 0..array.size() {
+        println!("array[{i}] = {}", array[i])
+    }
+    array.remove(2)?;
+    for i in 0..array.size() {
+        println!("array[{i}] = {}", array[i]);
+    }
+    array[1] = String::from("안녕하세요");
+    for _ in 0..3 {
+        println!("pop() -> {}", array.pop()?);
+    }
+    println!("size: {}", array.size());
+    println!("is array empty? {}", array.is_empty());
+    println!("{:?}", array);
+
+    println!("\nTrying another Array..");
+    let a = [String::from("a"), String::from("b"), String::from("c")];
+    let mut array2 = Array::from(a);
+    println!("array2 = {}", array2);
+    println!("popped: {}", array2.pop()?);
+    array2.remove(0)?;
+    println!("final array2 = {}", array2);
 
     println!("\nRust memory alloc/dealloc..");
     let layout = Layout::array::<i64>(4)?;
