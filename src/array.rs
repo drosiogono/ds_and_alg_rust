@@ -1,4 +1,3 @@
-use core::fmt;
 use std::alloc::{alloc, dealloc, Layout};
 use std::ptr;
 use std::ops::{Index, IndexMut};
@@ -42,7 +41,9 @@ pub struct Array<T> {
 
 impl<T, const N: usize> From<[T; N]> for Array<T> {
     fn from(s: [T; N]) -> Self {
-        if N == 0 {
+        if std::mem::size_of::<T>() == 0 {
+            panic!("Array does not support zero-sized types.");
+        } else if N == 0 {
             Self::new()
         } else {
             let len = N;
@@ -50,6 +51,9 @@ impl<T, const N: usize> From<[T; N]> for Array<T> {
             let ptr = unsafe {
                 alloc(layout) as *mut T
             };
+            if ptr.is_null() {
+                std::alloc::handle_alloc_error(layout);
+            }
             for (i, v) in s.into_iter().enumerate() {
                 unsafe {
                     ptr.add(i).write(v)
@@ -104,6 +108,9 @@ impl<T> std::fmt::Display for Array<T>
 
 impl<T> Array<T> {
     pub fn new() -> Self {
+        if std::mem::size_of::<T>() == 0 {
+            panic!("Array does not support zero-sized types.");
+        }
         Self {
             ptr: ptr::null_mut(),
             capacity: 0,
@@ -113,7 +120,7 @@ impl<T> Array<T> {
 
     fn grow(&mut self) -> Result<(), ArrayError> {
         let new_capacity = if self.capacity == 0 {
-            std::mem::size_of::<T>()
+            4
         } else {
             self.capacity
                 .checked_mul(2)
