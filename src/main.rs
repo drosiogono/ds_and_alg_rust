@@ -1,9 +1,8 @@
 mod stack;
 mod queue;
-// use crate::stack::IntStack;
+mod array;
+
 use std::alloc::{alloc, dealloc, Layout};
-// use std::ptr;
-// use stack::IntStack;
 use queue::IntQueue;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
