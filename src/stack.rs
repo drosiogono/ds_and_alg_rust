@@ -1,10 +1,11 @@
 use std::alloc::{alloc, dealloc, Layout};
 use std::ptr;
+use std::marker::PhantomData;
 
 #[derive(Debug)]
 pub enum StackError {
     CapacityOverflow,
-    InvalidCapacity,
+    // InvalidCapacity,
     Underflow,
     LayoutError(std::alloc::LayoutError),
 }
@@ -16,7 +17,7 @@ impl std::fmt::Display for StackError {
     ) -> std::fmt::Result {
         match self {
             Self::CapacityOverflow => write!(f, "capacity overflow"),
-            Self::InvalidCapacity => write!(f, "invalid capacity"),
+            // Self::InvalidCapacity => write!(f, "invalid capacity"),
             Self::Underflow => write!(f, "stack underflow"),
             Self::LayoutError(layout_error) => write!(f, "LayoutError: {layout_error}"),
         }
@@ -36,6 +37,7 @@ pub struct Stack<T> {
     ptr: *mut T,
     top: usize,
     capacity: usize,
+    phantom: PhantomData<T>,
 }
 
 impl<T> Stack<T> {
@@ -44,6 +46,7 @@ impl<T> Stack<T> {
             ptr: ptr::null_mut(),
             top: 0,
             capacity: 0,
+            phantom: PhantomData,
         }
     }
 
@@ -130,7 +133,7 @@ impl<T> Drop for Stack<T> {
     fn drop(&mut self) {
         unsafe {
             for i in 0..self.top {
-                ptr::drop_in_place(self.ptr.add(i));
+                ptr::drop_in_place(self.ptr.add(i) as *mut u8);
             }
             if !self.ptr.is_null() {
                 let layout = Layout::array::<T>(self.capacity).unwrap();

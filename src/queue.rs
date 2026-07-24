@@ -1,9 +1,11 @@
 use std::alloc::{Layout, alloc, dealloc};
+use std::ptr;
+use std::marker::PhantomData;
 
 #[derive(Debug)]
 pub enum QueueError {
     CapacityOverflow,
-    InvalidCapacity,
+    // InvalidCapacity,
     Underflow,
     LayoutError(std::alloc::LayoutError),
 }
@@ -15,7 +17,7 @@ impl std::fmt::Display for QueueError {
     ) -> std::fmt::Result {
         match self {
             Self::CapacityOverflow => write!(f, "Capacity overflow"),
-            Self::InvalidCapacity => write!(f, "Invalid capacity"),
+            // Self::InvalidCapacity => write!(f, "Invalid capacity"),
             Self::Underflow => write!(f, "Underflow"),
             Self::LayoutError(layout_error) => write!(f, "LayoutError: {}", layout_error),
         }
@@ -31,55 +33,60 @@ impl From<std::alloc::LayoutError> for QueueError {
 impl std::error::Error for QueueError {}
 
 #[derive(Debug)]
-pub struct IntQueue {
-    ptr: *mut i32,
+pub struct Queue<T> {
+    ptr: *mut T,
     head: usize,
     tail: usize,
     capacity: usize,
+    phantom: PhantomData<T>,
 }
 
-impl Drop for IntQueue {
+impl<T> Drop for Queue<T> {
     fn drop(&mut self) {
-        let layout = Layout::array::<i32>(self.capacity).unwrap();
         unsafe {
-            dealloc(
-                self.ptr as *mut u8,
-                layout,
-            )
+            for i in 0..self.size() {
+                ptr::drop_in_place(
+                    self.ptr
+                        .add((self.tail + i + 1) % self.capacity)
+                );
+            } // Assumption: drops of T in drop() do not panic.
+            if !self.ptr.is_null() {
+                let layout = Layout::array::<T>(self.capacity).unwrap();
+                dealloc(
+                    self.ptr as *mut u8,
+                    layout,
+                )
+            }
         };
     }
 }
 
-impl IntQueue {
-    pub fn new(capacity: usize) -> Result<IntQueue, QueueError> {
-        if capacity < 2 {
-            Err(QueueError::InvalidCapacity)
-        } else {
-            let layout = Layout::array::<i32>(capacity)?;
-            let ptr = unsafe {
-                alloc(layout) as *mut i32
-            };
-            if ptr.is_null() {
-                std::alloc::handle_alloc_error(layout);
-            }
-            Ok(IntQueue {
-                ptr,
-                head: 0,
-                tail: 0,
-                capacity,
-            })
+impl<T> Queue<T> {
+    pub fn new() -> Queue<T> {
+        if std::mem::size_of::<T>() == 0 {
+            panic!("Queue does not support zero-sized types.");
+        }
+        Self {
+            ptr: ptr::null_mut(),
+            head: 0,
+            tail: 0,
+            capacity: 1,
+            phantom: PhantomData,
         }
     }
 
     fn grow(&mut self) -> Result<(), QueueError> {
-        let new_capacity = self.capacity
+        let new_capacity = if self.capacity == 1 {
+            4
+        } else { self.capacity
             .checked_mul(2)
-            .ok_or(QueueError::CapacityOverflow)?;
-        let old = Layout::array::<i32>(self.capacity)?;
-        let new = Layout::array::<i32>(new_capacity)?;
+            .ok_or(QueueError::CapacityOverflow)?
+        };
+        let old = Layout::array::<T>(self.capacity)?;
+        let new = Layout::array::<T>(new_capacity)?;
         
         let new_ptr = unsafe {
-            alloc(new) as *mut i32
+            alloc(new) as *mut T
         };
         if new_ptr.is_null() {
             std::alloc::handle_alloc_error(new);
@@ -92,11 +99,13 @@ impl IntQueue {
                 )
             };
         }
-        unsafe {
-            dealloc(
-                self.ptr as *mut u8,
-                old,
-            )
+        if !self.ptr.is_null() {
+            unsafe {
+                dealloc(
+                    self.ptr as *mut u8,
+                    old,
+                )
+            }
         }
 
         self.ptr = new_ptr;
@@ -106,7 +115,7 @@ impl IntQueue {
         Ok(())
     }
 
-    pub fn enqueue(&mut self, value: i32) -> Result<(), QueueError> {
+    pub fn enqueue(&mut self, value: T) -> Result<(), QueueError> {
         if self.is_full() {
             self.grow()?;
         }
@@ -117,7 +126,7 @@ impl IntQueue {
         Ok(())
     }
 
-    pub fn dequeue(&mut self) -> Result<i32, QueueError> {
+    pub fn dequeue(&mut self) -> Result<T, QueueError> {
         if self.is_empty() {
             Err(QueueError::Underflow)
         } else {
@@ -129,12 +138,12 @@ impl IntQueue {
         }
     }
 
-    pub fn peek(&self) -> Result<i32, QueueError> {
+    pub fn peek(&self) -> Result<&T, QueueError> {
         if self.is_empty() {
             Err(QueueError::Underflow)
         } else {
             let value = unsafe {
-                self.ptr.add((self.tail + 1) % self.capacity).read()
+                &*self.ptr.add((self.tail + 1) % self.capacity)
             };
             Ok(value)
         }
@@ -149,6 +158,6 @@ impl IntQueue {
     }
 
     pub fn size(&self) -> usize {
-        (self.head - self.tail + self.capacity) % self.capacity
+        (self.head + self.capacity - self.tail) % self.capacity
     }
 }
