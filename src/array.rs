@@ -94,7 +94,7 @@ impl<T> std::fmt::Display for Array<T>
         fn fmt(
             &self,
             f: &mut std::fmt::Formatter<'_>,
-        ) -> fmt::Result {
+        ) -> std::fmt::Result {
             write!(f, "[")?;
             for i in 0..self.size() {
                 if i > 0 {
