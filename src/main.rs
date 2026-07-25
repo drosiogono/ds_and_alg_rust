@@ -1,7 +1,7 @@
 mod stack;
 mod queue;
 mod array;
-// mod linked_list;
+mod linked_list;
 
 use std::alloc::{alloc, dealloc, Layout};
 use stack::Stack;
