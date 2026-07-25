@@ -170,7 +170,7 @@ impl<T, const N: usize> From<[T; N]> for Queue<T> {
         if N == 0 {
             Self::new()
         } else {
-            let layout = Layout::array::<T>(N).expect("Layout error");
+            let layout = Layout::array::<T>(N + 1).expect("Layout error");
             let ptr = unsafe {
                 alloc(layout) as *mut T
             };
@@ -179,14 +179,46 @@ impl<T, const N: usize> From<[T; N]> for Queue<T> {
             }
             for (i, v) in s.into_iter().enumerate() {
                 unsafe {
-                    ptr.add(i).write(v);
+                    ptr.add(i + 1).write(v);
                 };
             }
             Self {
                 ptr,
-                head: N - 1,
+                head: N,
                 tail: 0,
-                capacity: N,
+                capacity: N + 1,
+                phantom: PhantomData,
+            }
+        }
+    }
+}
+
+impl<T> From<Vec<T>> for Queue<T> {
+    fn from(s: Vec<T>) -> Self {
+        if std::mem::size_of::<T>() == 0 {
+            panic!("Queue does not support zero-sized types.");
+        }
+        let n = s.len();
+        if n == 0 {
+            Self::new()
+        } else {
+            let layout = Layout::array::<T>(n + 1).expect("Layout error");
+            let ptr = unsafe {
+                alloc(layout) as *mut T
+            };
+            if ptr.is_null() {
+                std::alloc::handle_alloc_error(layout);
+            }
+            for (i, v) in s.into_iter().enumerate() {
+                unsafe {
+                    ptr.add(i + 1).write(v);
+                };
+            }
+            Self {
+                ptr,
+                head: n,
+                tail: 0,
+                capacity: n + 1,
                 phantom: PhantomData,
             }
         }
