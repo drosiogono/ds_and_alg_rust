@@ -145,3 +145,67 @@ impl<T> Drop for Stack<T> {
         };
     }
 }
+
+impl<T, const N: usize> From<[T; N]> for Stack<T> {
+    fn from(s: [T; N]) -> Self {
+        if std::mem::size_of::<T>() == 0 {
+            panic!("Stack does not support zero-sized types.");
+        }
+        if N == 0 {
+            Self::new()
+        } else {
+            let capacity = N;
+            let top = N;
+            let layout = Layout::array::<T>(capacity).expect("Layout error");
+            let ptr = unsafe {
+                alloc(layout) as *mut T
+            };
+            if ptr.is_null() {
+                std::alloc::handle_alloc_error(layout);
+            }
+            for (i, v) in s.into_iter().enumerate() {
+                unsafe {
+                    ptr.add(i).write(v)
+                };
+            }
+            Self {
+                ptr,
+                top,
+                capacity,
+                phantom: PhantomData,
+            }
+        }
+    }
+}
+
+impl<T> From<Vec<T>> for Stack<T> {
+    fn from(s: Vec<T>) -> Self {
+        if std::mem::size_of::<T>() == 0 {
+            panic!("Stack does not support zero-sized types.");
+        }
+        if s.len() == 0 {
+            Self::new()
+        } else {
+            let capacity = s.len();
+            let top = s.len();
+            let layout = Layout::array::<T>(capacity).expect("Layout error");
+            let ptr = unsafe {
+                alloc(layout) as *mut T
+            };
+            if ptr.is_null() {
+                std::alloc::handle_alloc_error(layout);
+            }
+            for (i, v) in s.into_iter().enumerate() {
+                unsafe {
+                    ptr.add(i).write(v)
+                };
+            }
+            Self {
+                ptr,
+                top,
+                capacity,
+                phantom: PhantomData,
+            }
+        }
+    }
+}

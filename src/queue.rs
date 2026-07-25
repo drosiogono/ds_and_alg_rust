@@ -161,3 +161,34 @@ impl<T> Queue<T> {
         (self.head + self.capacity - self.tail) % self.capacity
     }
 }
+
+impl<T, const N: usize> From<[T; N]> for Queue<T> {
+    fn from(s: [T; N]) -> Self {
+        if std::mem::size_of::<T>() == 0 {
+            panic!("Queue does not support zero-sized types.");
+        }
+        if N == 0 {
+            Self::new()
+        } else {
+            let layout = Layout::array::<T>(N).expect("Layout error");
+            let ptr = unsafe {
+                alloc(layout) as *mut T
+            };
+            if ptr.is_null() {
+                std::alloc::handle_alloc_error(layout);
+            }
+            for (i, v) in s.into_iter().enumerate() {
+                unsafe {
+                    ptr.add(i).write(v);
+                };
+            }
+            Self {
+                ptr,
+                head: N - 1,
+                tail: 0,
+                capacity: N,
+                phantom: PhantomData,
+            }
+        }
+    }
+}

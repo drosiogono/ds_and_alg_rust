@@ -1,4 +1,5 @@
 use std::alloc::{alloc, dealloc, Layout};
+use std::marker::PhantomData;
 use std::ptr;
 use std::ops::{Index, IndexMut};
 
@@ -37,13 +38,15 @@ pub struct Array<T> {
     ptr: *mut T,
     capacity: usize,
     len: usize,
+    phantom: PhantomData<T>,
 }
 
 impl<T, const N: usize> From<[T; N]> for Array<T> {
     fn from(s: [T; N]) -> Self {
         if std::mem::size_of::<T>() == 0 {
             panic!("Array does not support zero-sized types.");
-        } else if N == 0 {
+        }
+        if N == 0 {
             Self::new()
         } else {
             let len = N;
@@ -63,6 +66,38 @@ impl<T, const N: usize> From<[T; N]> for Array<T> {
                 ptr,
                 capacity: N,
                 len,
+                phantom: PhantomData,
+            }
+        }
+    }
+}
+
+impl<T> From<Vec<T>> for Array<T> {
+    fn from(s: Vec<T>) -> Self {
+        if std::mem::size_of::<T>() == 0 {
+            panic!("Array does not support zero-sized types.");
+        }
+        if s.len() == 0 {
+            Self::new()
+        } else {
+            let len = s.len();
+            let layout = Layout::array::<T>(len).unwrap();
+            let ptr = unsafe {
+                alloc(layout) as *mut T
+            };
+            if ptr.is_null() {
+                std::alloc::handle_alloc_error(layout);
+            }
+            for (i, v) in s.into_iter().enumerate() {
+                unsafe {
+                    ptr.add(i).write(v)
+                };
+            }
+            Self {
+                ptr,
+                capacity: len,
+                len,
+                phantom: PhantomData,
             }
         }
     }
@@ -91,19 +126,19 @@ impl<T> Drop for Array<T> {
 
 impl<T> std::fmt::Display for Array<T> 
     where T: std::fmt::Display {
-        fn fmt(
-            &self,
-            f: &mut std::fmt::Formatter<'_>,
-        ) -> std::fmt::Result {
-            write!(f, "[")?;
-            for i in 0..self.size() {
-                if i > 0 {
-                    write!(f, ", ")?;
-                }
-                write!(f, "{}", self[i])?;
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(f, "[")?;
+        for i in 0..self.size() {
+            if i > 0 {
+                write!(f, ", ")?;
             }
-            write!(f, "]")
+            write!(f, "{}", self[i])?;
         }
+        write!(f, "]")
+    }
 }
 
 impl<T> Array<T> {
@@ -115,6 +150,7 @@ impl<T> Array<T> {
             ptr: ptr::null_mut(),
             capacity: 0,
             len: 0,
+            phantom: PhantomData,
         }
     }
 
