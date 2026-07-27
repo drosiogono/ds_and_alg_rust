@@ -1,12 +1,7 @@
-mod stack;
-mod queue;
-mod array;
-mod linked_list;
-
 use std::alloc::{alloc, dealloc, Layout};
-use stack::Stack;
-use queue::Queue;
-use array::Array;
+use ds_and_alg::stack::Stack;
+use ds_and_alg::queue::Queue;
+use ds_and_alg::array::Array;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Trying Queue..");

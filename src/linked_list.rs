@@ -1,6 +1,7 @@
 use std::alloc::{alloc, dealloc, Layout};
 // use std::mem::MaybeUninit;
 use std::ptr::{self, NonNull};
+use std::usize;
 
 pub enum LinkedListError {
     IndexError(usize),
@@ -21,30 +22,31 @@ impl std::fmt::Display for LinkedListError {
 // BIG FIX: changed Node.now from *mut T to T
 struct Node<T> {
     now: T,
-    next: *mut Node<T>,
+    next: Option<NonNull<Node<T>>>,
 }
 
 impl<T> Node<T> {
-    fn new(value: T) -> Self {
-        Self {
+    fn new(value: T) -> NonNull<Node<T>> {
+        let b = Box::new(Self {
             now: value,
-            next: ptr::null_mut(),
-        }
+            next: None,
+        });
+        NonNull::new(Box::into_raw(b)).expect("Error while allocating a new node.")
     }
-    fn next(&self) -> Option<NonNull<Node<T>>> {
-        NonNull::new(self.next)
+    unsafe fn destroy(ptr: NonNull<Node<T>>) {
+        drop(Box::from_raw(ptr.as_ptr()));
     }
 }
 
 pub struct LinkedList<T> {
-    ptr: *mut Node<T>,
+    ptr: Option<NonNull<Node<T>>>,
     len: usize,
 }
 
 impl<T> LinkedList<T> {
     pub fn new() -> Self {
         Self {
-            ptr: ptr::null_mut(),
+            ptr: None,
             len: 0,
         }
     }
@@ -52,25 +54,26 @@ impl<T> LinkedList<T> {
         if idx > self.len {
             Err(LinkedListError::IndexError(idx))
         } else {
-            let mut node = self.ptr;
-            let mut new_node = Box::new(Node::new(value));
-            if idx > 0 {
+            let node = self.ptr;
+            if idx == 0 {
+                let new_node = Node::new(value).as_ptr();
+                unsafe {
+                    (*new_node).next = node
+                };
+                self.ptr = NonNull::new(new_node);
+            } else {
+                let mut prev = node.ok_or(LinkedListError::IndexError(idx))?;
                 for _ in 0..(idx - 1) {
                     unsafe {
-                        node = (*node).next
+                        prev = (*prev.as_ptr()).next.ok_or(LinkedListError::IndexError(idx))?
                     };
-                    if node.next.is_null() {
-                        return Err(LinkedListError::IndexError(idx))
-                    }
                 }
+                let new_node = Node::new(value).as_ptr();
                 unsafe {
-                    let next = (*node).next().ok_or(LinkedListError::IndexError(idx))?;
-                    new_node.next = next;
-                    (*node).next = &mut new_node as *mut Node<T>;
-                }
-            } else {
-                new_node.next = node;
-                self.ptr = &mut new_node as *mut Node<T>;
+                    let next = (*prev.as_mut()).next;
+                    (*prev.as_mut()).next = NonNull::new(new_node);
+                    (*new_node).next = next;
+                };
             }
             Ok(())
         }
