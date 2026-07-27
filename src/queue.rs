@@ -1,4 +1,5 @@
 use std::alloc::{Layout, alloc, dealloc};
+use std::mem::ManuallyDrop;
 use std::ptr;
 use std::marker::PhantomData;
 
@@ -40,6 +41,7 @@ pub struct Queue<T> {
     capacity: usize,
     phantom: PhantomData<T>,
 }
+// capacity: actually capable space + 1 (ring queue)
 
 impl<T> Drop for Queue<T> {
     fn drop(&mut self) {
@@ -82,7 +84,6 @@ impl<T> Queue<T> {
             .checked_mul(2)
             .ok_or(QueueError::CapacityOverflow)?
         };
-        let old = Layout::array::<T>(self.capacity)?;
         let new = Layout::array::<T>(new_capacity)?;
         
         let new_ptr = unsafe {
@@ -92,15 +93,33 @@ impl<T> Queue<T> {
             std::alloc::handle_alloc_error(new);
         }
         let n = self.size();
-        for i in 0..n {
+        // for i in 0..n {
+        //     unsafe {
+        //         new_ptr.add(i + 1).write(
+        //             self.ptr.add((self.tail + i + 1) % self.capacity).read()
+        //         )
+        //     };
+        // }
+        if !self.ptr.is_null() && n > 0 {
             unsafe {
-                new_ptr.add(i + 1).write(
-                    self.ptr.add((self.tail + i + 1) % self.capacity).read()
-                )
-            };
-        }
-        if !self.ptr.is_null() {
-            unsafe {
+                let start = (self.tail + 1) % self.capacity;
+                if start <= self.head {
+                    ptr::copy_nonoverlapping(
+                        self.ptr.add(start), 
+                        new_ptr.add(1), 
+                        self.head - start + 1);
+                } else if start > self.head {
+                    ptr::copy_nonoverlapping(
+                        self.ptr.add(start), 
+                        new_ptr.add(1), 
+                        self.capacity - start);
+                    ptr::copy_nonoverlapping(
+                        self.ptr.add(1), 
+                        new_ptr.add(self.capacity - start + 1), 
+                        self.head);
+                }
+
+                let old = Layout::array::<T>(self.capacity)?;
                 dealloc(
                     self.ptr as *mut u8,
                     old,
@@ -177,10 +196,14 @@ impl<T, const N: usize> From<[T; N]> for Queue<T> {
             if ptr.is_null() {
                 std::alloc::handle_alloc_error(layout);
             }
-            for (i, v) in s.into_iter().enumerate() {
-                unsafe {
-                    ptr.add(i + 1).write(v);
-                };
+            // for (i, v) in s.into_iter().enumerate() {
+            //     unsafe {
+            //         ptr.add(i + 1).write(v);
+            //     };
+            // }
+            let s = ManuallyDrop::new(s);
+            unsafe {
+                ptr::copy_nonoverlapping(s.as_ptr(), ptr.add(1), N);
             }
             Self {
                 ptr,
@@ -214,6 +237,9 @@ impl<T> From<Vec<T>> for Queue<T> {
                     ptr.add(i + 1).write(v);
                 };
             }
+            // unsafe {
+            //     ptr::copy_nonoverlapping(s.as_ptr(), ptr.add(1), n);
+            // }
             Self {
                 ptr,
                 head: n,

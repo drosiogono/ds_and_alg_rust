@@ -2,6 +2,7 @@ use std::alloc::{alloc, dealloc, Layout};
 use std::marker::PhantomData;
 use std::ptr;
 use std::ops::{Index, IndexMut};
+use std::mem::ManuallyDrop;
 
 #[derive(Debug)]
 pub enum ArrayError {
@@ -57,10 +58,14 @@ impl<T, const N: usize> From<[T; N]> for Array<T> {
             if ptr.is_null() {
                 std::alloc::handle_alloc_error(layout);
             }
-            for (i, v) in s.into_iter().enumerate() {
-                unsafe {
-                    ptr.add(i).write(v)
-                };
+            // for (i, v) in s.into_iter().enumerate() {
+            //     unsafe {
+            //         ptr.add(i).write(v)
+            //     };
+            // }
+            let s = ManuallyDrop::new(s);
+            unsafe {
+                ptr::copy_nonoverlapping(s.as_ptr(), ptr, N);
             }
             Self {
                 ptr,
@@ -93,6 +98,12 @@ impl<T> From<Vec<T>> for Array<T> {
                     ptr.add(i).write(v)
                 };
             }
+            // unsafe {
+            //     ptr::copy_nonoverlapping(s.as_ptr(), ptr, len);
+            // }
+            // impossible; not only each element but also the vector struct itself should be dropped
+            // not sufficient for ptr::copy_nonoverlapping only
+            // ManuallyDrop<T>? It can be, but we still can't drop the vector struct itself
             Self {
                 ptr,
                 capacity: len,
@@ -162,7 +173,6 @@ impl<T> Array<T> {
                 .checked_mul(2)
                 .ok_or(ArrayError::CapacityOverflow)?
         };
-        let old_layout = Layout::array::<T>(self.capacity)?;
         let new_layout = Layout::array::<T>(new_capacity)?;
         let new_ptr = unsafe {
             alloc(new_layout) as *mut T
@@ -172,12 +182,15 @@ impl<T> Array<T> {
         }
         
         unsafe {
-            for i in 0..self.size() {
-                new_ptr.add(i).write(
-                    self.ptr.add(i).read()
-                );
-            }
-            if !self.ptr.is_null() {
+            // for i in 0..self.size() {
+            //     new_ptr.add(i).write(
+            //         self.ptr.add(i).read()
+            //     );
+            // }
+            if !self.ptr.is_null() && self.capacity > 0 {
+                ptr::copy_nonoverlapping(self.ptr, new_ptr, self.size());
+
+                let old_layout = Layout::array::<T>(self.capacity)?;
                 dealloc(
                     self.ptr as *mut u8,
                     old_layout,
@@ -196,14 +209,15 @@ impl<T> Array<T> {
             if self.is_full() {
                 self.grow()?;
             }
-            for i in (idx..self.size()).rev() {
-                unsafe {
-                    self.ptr.add(i + 1).write(
-                        self.ptr.add(i).read()
-                    )
-                };
-            }
+            // for i in (idx..self.size()).rev() {
+            //     unsafe {
+            //         self.ptr.add(i + 1).write(
+            //             self.ptr.add(i).read()
+            //         )
+            //     };
+            // }
             unsafe {
+                ptr::copy(self.ptr.add(idx), self.ptr.add(idx + 1), self.size() - idx);
                 self.ptr.add(idx).write(value)
             };
             self.len += 1;
@@ -212,15 +226,16 @@ impl<T> Array<T> {
     }
 
     pub fn push(&mut self, value: T) -> Result<(), ArrayError> {
-        // if self.is_full() {
-        //     self.grow()?;
-        // }
-        // unsafe {
-        //     self.ptr.add(self.size()).write(value)
-        // };
-        // self.len += 1;
-        // Ok(())
-        self.insert(self.size(), value)
+        if self.is_full() {
+            self.grow()?;
+        }
+        unsafe {
+            self.ptr.add(self.size()).write(value)
+        };
+        self.len += 1;
+        Ok(())
+        // to reduce the time...
+        // self.insert(self.size(), value)
     }
 
     pub fn remove(&mut self, idx: usize) -> Result<T, ArrayError> {

@@ -1,6 +1,7 @@
 use std::alloc::{alloc, dealloc, Layout};
 use std::ptr;
 use std::marker::PhantomData;
+use std::mem::ManuallyDrop;
 
 #[derive(Debug)]
 pub enum StackError {
@@ -56,7 +57,6 @@ impl<T> Stack<T> {
         } else {
             self.capacity.checked_mul(2).ok_or(StackError::CapacityOverflow)?
         };
-        let old = Layout::array::<T>(self.capacity)?;
         let new = Layout::array::<T>(new_capacity)?;
 
         let new_ptr = unsafe {
@@ -68,12 +68,13 @@ impl<T> Stack<T> {
         };
 
         unsafe {
-            for i in 0..self.top {
-                let value = self.ptr.add(i).read();
-                new_ptr.add(i).write(value);
-            }
-
-            if !self.ptr.is_null() {
+            // for i in 0..self.top {
+            //     let value = self.ptr.add(i).read();
+            //     new_ptr.add(i).write(value);
+            // }
+            if !self.ptr.is_null() && self.capacity > 0 {
+                ptr::copy_nonoverlapping(self.ptr, new_ptr, self.size());
+                let old = Layout::array::<T>(self.capacity)?;
                 dealloc(
                     self.ptr as *mut u8,
                     old,
@@ -163,10 +164,14 @@ impl<T, const N: usize> From<[T; N]> for Stack<T> {
             if ptr.is_null() {
                 std::alloc::handle_alloc_error(layout);
             }
-            for (i, v) in s.into_iter().enumerate() {
-                unsafe {
-                    ptr.add(i).write(v)
-                };
+            // for (i, v) in s.into_iter().enumerate() {
+            //     unsafe {
+            //         ptr.add(i).write(v)
+            //     };
+            // }
+            let s = ManuallyDrop::new(s);
+            unsafe {
+                ptr::copy_nonoverlapping(s.as_ptr(), ptr, N);
             }
             Self {
                 ptr,
@@ -200,6 +205,9 @@ impl<T> From<Vec<T>> for Stack<T> {
                     ptr.add(i).write(v)
                 };
             }
+            // unsafe {
+            //     ptr::copy_nonoverlapping(s.as_ptr(), ptr, top);
+            // }
             Self {
                 ptr,
                 top,
