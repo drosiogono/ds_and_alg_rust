@@ -133,7 +133,7 @@ impl<T> Drop for Stack<T> {
     fn drop(&mut self) {
         unsafe {
             for i in 0..self.top {
-                ptr::drop_in_place(self.ptr.add(i) as *mut u8);
+                ptr::drop_in_place(self.ptr.add(i));
             }
             if !self.ptr.is_null() {
                 let layout = Layout::array::<T>(self.capacity).unwrap();

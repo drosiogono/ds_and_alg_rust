@@ -1,6 +1,6 @@
 use std::alloc::{alloc, dealloc, Layout};
 // use std::mem::MaybeUninit;
-use std::ptr;
+use std::ptr::{self, NonNull};
 
 pub enum LinkedListError {
     IndexError(usize),
@@ -17,74 +17,34 @@ impl std::fmt::Display for LinkedListError {
     }
 }
 
-// Hmm I want to practice MaybeUninit<T>.. 
-// But it's not suitable because it's not sure whether it implements Copy trait
-#[derive(Clone, Copy)]
+// Hmm I wanted to practice MaybeUninit<T>.. 
+// BIG FIX: changed Node.now from *mut T to T
 struct Node<T> {
-    now: *mut T,
+    now: T,
     next: *mut Node<T>,
 }
 
-impl<T> Drop for Node<T> {
-    fn drop(&mut self) {
-        if !self.now.is_null() {
-            unsafe {
-                self.now.drop_in_place()
-            };
-        }
-        let layout = Layout::new::<T>();
-        unsafe {
-            dealloc(self.now as *mut u8, layout)
-        };
-    }
-}
-
 impl<T> Node<T> {
-    fn new(maybe_value: Option<T>) -> Self {
-        match maybe_value {
-            Some(value) => {
-                let layout = Layout::new::<T>();
-                let ptr = unsafe {
-                    alloc(layout) as *mut T
-                };
-                if ptr.is_null() {
-                    std::alloc::handle_alloc_error(layout);
-                }
-                unsafe {
-                    ptr.write(value)
-                };
-                Self {
-                    now: ptr,
-                    next: ptr::null_mut(),
-                }
-            },
-            None => Self {
-                now: ptr::null_mut(),
-                next: ptr::null_mut(),
-            }
+    fn new(value: T) -> Self {
+        Self {
+            now: value,
+            next: ptr::null_mut(),
         }
     }
-    fn link(&mut self, tail: &mut Node<T>) {
-        self.next = tail;
-    }
-    fn next(&self) -> Option<*mut Node<T>> {
-        if self.next.is_null() {
-            None
-        } else {
-            Some(self.next)
-        }
+    fn next(&self) -> Option<NonNull<Node<T>>> {
+        NonNull::new(self.next)
     }
 }
 
 pub struct LinkedList<T> {
-    ptr: Node<T>,
+    ptr: *mut Node<T>,
     len: usize,
 }
 
 impl<T> LinkedList<T> {
     pub fn new() -> Self {
         Self {
-            ptr: Node::new(None),
+            ptr: ptr::null_mut(),
             len: 0,
         }
     }
@@ -92,11 +52,25 @@ impl<T> LinkedList<T> {
         if idx > self.len {
             Err(LinkedListError::IndexError(idx))
         } else {
-            let mut ptr = self.ptr;
-            for _ in 0..idx {
-                unsafe {
-                    ptr = *ptr.next().ok_or(LinkedListError::IndexError(idx))?;
+            let mut node = self.ptr;
+            let mut new_node = Box::new(Node::new(value));
+            if idx > 0 {
+                for _ in 0..(idx - 1) {
+                    unsafe {
+                        node = (*node).next
+                    };
+                    if node.next.is_null() {
+                        return Err(LinkedListError::IndexError(idx))
+                    }
                 }
+                unsafe {
+                    let next = (*node).next().ok_or(LinkedListError::IndexError(idx))?;
+                    new_node.next = next;
+                    (*node).next = &mut new_node as *mut Node<T>;
+                }
+            } else {
+                new_node.next = node;
+                self.ptr = &mut new_node as *mut Node<T>;
             }
             Ok(())
         }
