@@ -64,7 +64,6 @@ move to T's own address
     ↓
 read T
 
-Node가 T를 직접 포함하면, 최소한 Node 내부의 T를 읽기 위해 추가적인 pointer dereference가 필요하지 않다.
 If Node directly includes T, at least additional pointer dereference for reading T in Node becomes unnecessary.
 
 3. Danger of manual Drop

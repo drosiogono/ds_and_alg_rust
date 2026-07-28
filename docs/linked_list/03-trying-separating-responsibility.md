@@ -4,11 +4,11 @@ Instead of LinkedList making and destroying Node, how about letting Node managin
 Structure:
 LinkedList
     ↓
-Node 생성 요청
+asking Node creation
     ↓
-Node가 T allocation
+Node allocates T
     ↓
-Node가 T destruction
+Node destructs T
 
 (Something about representation and responsibility)
 
