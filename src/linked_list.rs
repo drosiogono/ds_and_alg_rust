@@ -1,10 +1,12 @@
 // use std::alloc::{alloc, dealloc, Layout};
 // use std::mem::MaybeUninit;
-use std::ptr::{self, NonNull};
+use std::ptr::{NonNull};
 use std::usize;
 
+#[derive(Debug)]
 pub enum LinkedListError {
     IndexError(usize),
+    EmptyListError,
 }
 
 impl std::fmt::Display for LinkedListError {
@@ -50,16 +52,7 @@ pub struct LinkedList<T> {
 
 impl<T> Drop for LinkedList<T> {
     fn drop(&mut self) {
-        if !self.is_empty() {
-            let mut node = self.ptr.expect("Empty LinkedList is dropped.").as_ptr();
-            for _ in 0..self.size() {
-                unsafe {
-                    let next = (*node).next.expect("Empty tail node error.").as_ptr();
-                    Node::destroy(NonNull::new(node).unwrap());
-                    node = next;
-                }
-            }
-        }
+        self.clear();
     }
 }
 
@@ -106,7 +99,7 @@ impl<T> LinkedList<T> {
         if self.size() == 0 {
             self.ptr = Some(node);
         } else {
-            let mut prev = self.ptr.ok_or(LinkedListError::IndexError(self.size()))?;
+            let mut prev = self.ptr.ok_or(LinkedListError::EmptyListError)?;
             for i in 0..(self.size() - 1) {
                 unsafe {
                     prev = (*prev.as_ptr()).next.ok_or(LinkedListError::IndexError(i))?
@@ -136,12 +129,42 @@ impl<T> LinkedList<T> {
             } else {
                 unsafe {
                     let mut prev = self.ptr.unwrap();
-                    for i in 0..(idx - 1) {
+                    for _ in 0..(idx - 1) {
                         prev = (*prev.as_ref()).next.ok_or(LinkedListError::IndexError(idx))?;
                     }
                     let target = (*prev.as_ref()).next.ok_or(LinkedListError::IndexError(idx))?;
                     let next = (*target.as_ref()).next;
                     (*prev.as_mut()).next = next;
+                    self.len -= 1;
+                    Ok(Node::get(target))
+                }
+            }
+        }
+    }
+
+    pub fn pop(&mut self) -> Result<T, LinkedListError> {
+        if self.is_empty() {
+            Err(LinkedListError::EmptyListError)
+        } else {
+            if self.size() == 1 {
+                if let Some(ptr) = self.ptr {
+                    self.len -= 1;
+                    self.ptr = None;
+                    unsafe {
+                        Ok(Node::get(ptr))
+                    }
+                } else {
+                    Err(LinkedListError::EmptyListError)
+                }
+            } else {
+                let mut prev = self.ptr.unwrap();
+                unsafe {
+                    for _ in 0..(self.size() - 2) {
+                        prev = (*prev.as_ref()).next.ok_or(LinkedListError::EmptyListError)?;
+                    }
+                    let target = (*prev.as_ref()).next
+                        .ok_or(LinkedListError::IndexError(self.size() - 1))?;
+                    (*prev.as_mut()).next = None;
                     self.len -= 1;
                     Ok(Node::get(target))
                 }
@@ -158,14 +181,11 @@ impl<T> LinkedList<T> {
     }
 
     pub fn clear(&mut self) {
-        if !self.is_empty() {
-            let mut node = self.ptr.expect("Empty LinkedList is dropped.").as_ptr();
-            for _ in 0..self.size() {
-                unsafe {
-                    let next = (*node).next.expect("Empty tail node error.").as_ptr();
-                    Node::destroy(NonNull::new(node).unwrap());
-                    node = next;
-                }
+        while let Some(n) = self.ptr {
+            unsafe {
+                let next = n.as_ref().next;
+                Node::destroy(n);
+                self.ptr = next;
             }
         }
         self.ptr = None;
